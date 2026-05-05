@@ -120,7 +120,12 @@ func cmdSave(args []string) int {
 	toBucket := fs.String("to", "", "имя S3-бакета назначения")
 	tag := fs.String("tag", "", "тег для идентификации резервной копии (обязателен)")
 
-	if err := fs.Parse(args); err != nil {
+	// Поддерживаем порядок: `save <path> -tag v1 -to bucket`.
+	// Стандартный пакет flag прекращает парсинг на первом позиционном аргументе,
+	// поэтому переставляем позиционные аргументы в конец перед Parse.
+	reordered := reorderArgs(args)
+
+	if err := fs.Parse(reordered); err != nil {
 		return ExitArgError
 	}
 
@@ -460,6 +465,60 @@ func isNotFoundError(err error) bool {
 		return false
 	}
 	return contains(err.Error(), "не найден") || contains(err.Error(), "нет архивов")
+}
+
+// reorderArgs переставляет позиционные аргументы в конец слайса,
+// чтобы стандартный flag.Parse корректно обработал флаги, идущие после позиционных.
+// Учитывает, что флаги могут быть в формах: -flag, --flag, -flag=value, --flag=value, -flag value.
+// Для бинарных флагов (без значения) используется набор known booleans.
+func reorderArgs(args []string) []string {
+	// Известные булевы флаги команд save/download/list, которые не требуют значения.
+	boolFlags := map[string]bool{
+		"force":   true,
+		"dry-run": true,
+	}
+
+	flags := make([]string, 0, len(args))
+	positional := make([]string, 0, len(args))
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if len(a) > 1 && a[0] == '-' {
+			flags = append(flags, a)
+			// Если форма -flag=value — значение уже в строке, ничего не забираем.
+			if containsRune(a, '=') {
+				continue
+			}
+			// Очищаем имя флага от ведущих дефисов.
+			name := a
+			for len(name) > 0 && name[0] == '-' {
+				name = name[1:]
+			}
+			// Если это булев флаг — значение не забираем.
+			if boolFlags[name] {
+				continue
+			}
+			// Иначе следующий токен — значение флага.
+			if i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+			continue
+		}
+		positional = append(positional, a)
+	}
+
+	return append(flags, positional...)
+}
+
+// containsRune проверяет наличие руны в строке.
+func containsRune(s string, r byte) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == r {
+			return true
+		}
+	}
+	return false
 }
 
 // contains проверяет вхождение подстроки (без учёта регистра не нужно здесь).
