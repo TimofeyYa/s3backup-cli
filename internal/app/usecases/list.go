@@ -73,7 +73,8 @@ func List(ctx context.Context, storage Storage, params ListParams) ([]ListItem, 
 }
 
 // extractSource извлекает имя источника из ключа S3-объекта.
-// Формат ключа: backups/<source>/<timestamp>__<tag>.tar.gz
+// Основной формат: backups/<source>/<timestamp>__<tag>.tar.gz
+// Для flat-формата (backups/<timestamp>__<tag>.tar.gz) возвращает "(unknown)".
 func extractSource(key string) string {
 	// Убираем префикс "backups/"
 	if len(key) < 8 {
@@ -86,5 +87,6 @@ func extractSource(key string) string {
 			return rest[:i]
 		}
 	}
-	return rest
+	// Слэша нет — это flat-формат без source.
+	return "(unknown)"
 }

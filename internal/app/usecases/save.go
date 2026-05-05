@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -41,7 +42,17 @@ type SaveResult struct {
 
 // NormalizeDirName нормализует имя директории для использования в S3-ключе.
 // Убирает слэши, заменяет небезопасные символы на подчёркивание.
+// Для путей ".", "./", ".." и пустых строк резолвит реальное имя через filepath.Abs,
+// чтобы исключить пустой/точечный сегмент в S3-ключе (S3 нормализует ./ и ../).
 func NormalizeDirName(name string) string {
+	// Если путь относительный (".", "./", "..", "./foo") — резолвим через Abs,
+	// чтобы получить реальное имя директории.
+	if name == "" || name == "." || name == "./" || name == ".." || name == "../" {
+		if abs, err := filepath.Abs(name); err == nil {
+			name = abs
+		}
+	}
+
 	// Убираем слэши с обоих концов
 	name = strings.Trim(name, "/\\")
 	// Берём только последний компонент пути
@@ -50,11 +61,20 @@ func NormalizeDirName(name string) string {
 		name = parts[len(parts)-1]
 	}
 
+	// Если после всех преобразований остались только точки — это всё ещё "." или "..".
+	// Резолвим в абсолютный путь и берём имя оттуда.
+	if name == "." || name == ".." || strings.Trim(name, ".") == "" {
+		if abs, err := filepath.Abs("."); err == nil {
+			name = filepath.Base(abs)
+		}
+	}
+
 	// Заменяем небезопасные символы на подчёркивание
 	re := regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 	name = re.ReplaceAllString(name, "_")
 
-	if name == "" {
+	// Финальный fallback: если имя пустое или состоит только из точек/подчёркиваний — "backup".
+	if name == "" || strings.Trim(name, "._") == "" {
 		name = "backup"
 	}
 	return name

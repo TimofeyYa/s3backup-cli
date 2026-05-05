@@ -38,17 +38,27 @@ type DownloadResult struct {
 	Size int64
 }
 
-// keyPattern — регулярное выражение для парсинга timestamp и тега из ключа объекта.
-var keyPattern = regexp.MustCompile(`^backups/[^/]+/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)__([^/]+)\.tar\.gz$`)
+// keyPatternWithSource — формат с поддиректорией source: backups/<source>/<timestamp>__<tag>.tar.gz
+var keyPatternWithSource = regexp.MustCompile(`^backups/[^/]+/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)__([^/]+)\.tar\.gz$`)
+
+// keyPatternFlat — формат без поддиректории: backups/<timestamp>__<tag>.tar.gz
+// Поддерживает вариант с двойными подчёркиваниями (__) и тройными (___),
+// которые появляются, если source был пустым в старых версиях (обратная совместимость).
+var keyPatternFlat = regexp.MustCompile(`^backups/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_+([^/]+)\.tar\.gz$`)
 
 // ParseKey разбирает ключ S3-объекта и извлекает timestamp и тег.
+// Поддерживает два формата:
+//   - backups/<source>/<timestamp>__<tag>.tar.gz — основной формат
+//   - backups/<timestamp>__<tag>.tar.gz — fallback для архивов, залитых раньше с пустым source
 // Возвращает timestamp, tag и флаг успешного разбора.
 func ParseKey(key string) (timestamp, tag string, ok bool) {
-	m := keyPattern.FindStringSubmatch(key)
-	if m == nil {
-		return "", "", false
+	if m := keyPatternWithSource.FindStringSubmatch(key); m != nil {
+		return m[1], m[2], true
 	}
-	return m[1], m[2], true
+	if m := keyPatternFlat.FindStringSubmatch(key); m != nil {
+		return m[1], m[2], true
+	}
+	return "", "", false
 }
 
 // Download скачивает архив из S3 и распаковывает его в указанную директорию.

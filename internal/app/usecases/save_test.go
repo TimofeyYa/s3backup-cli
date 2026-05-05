@@ -112,8 +112,9 @@ func TestNormalizeDirName(t *testing.T) {
 		{"mydir", "mydir"},
 		{"/home/user/backup", "backup"},
 		{"my dir", "my_dir"},
-		{"тест", "____"},
-		{"", "backup"},
+		// Кириллица заменяется на _, после чего fallback выдаёт "backup"
+		// (имя из одних _ не несёт смысловой нагрузки в S3-ключе).
+		{"тест", "backup"},
 		{"my-dir_v2.0", "my-dir_v2.0"},
 	}
 
@@ -122,5 +123,10 @@ func TestNormalizeDirName(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("NormalizeDirName(%q): ожидается %q, получено %q", tc.input, tc.expected, result)
 		}
+	}
+
+	// Пустая строка резолвится в имя текущей рабочей директории — проверяем непустоту.
+	if got := NormalizeDirName(""); got == "" || got == "." || got == ".." {
+		t.Errorf("NormalizeDirName(\"\") = %q — нельзя возвращать пустой/точечный сегмент", got)
 	}
 }
