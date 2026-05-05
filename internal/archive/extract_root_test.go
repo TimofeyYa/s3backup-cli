@@ -115,6 +115,61 @@ func TestExtractWithRootMarker(t *testing.T) {
 	}
 }
 
+// TestExtractDottyNames проверяет, что файлы с точками в именах распаковываются корректно:
+// .DS_Store, v1.0, файл..тест.txt, скрытые файлы с ведущей точкой.
+func TestExtractDottyNames(t *testing.T) {
+	names := []string{
+		".DS_Store",
+		"v1.0/file.txt",
+		"sub/.DS_Store",
+		"файл..тест.txt",
+		".hidden",
+		"a.b.c.d.txt",
+	}
+
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	for _, name := range names {
+		content := []byte("test:" + name)
+		if err := tw.WriteHeader(&tar.Header{
+			Name:     name,
+			Typeflag: tar.TypeReg,
+			Mode:     0644,
+			Size:     int64(len(content)),
+		}); err != nil {
+			t.Fatalf("не удалось записать заголовок %q: %v", name, err)
+		}
+		if _, err := tw.Write(content); err != nil {
+			t.Fatalf("не удалось записать содержимое %q: %v", name, err)
+		}
+	}
+	tw.Close()
+	gw.Close()
+
+	tmpDir := t.TempDir()
+	archivePath := filepath.Join(tmpDir, "dotty.tar.gz")
+	if err := os.WriteFile(archivePath, buf.Bytes(), 0644); err != nil {
+		t.Fatalf("не удалось записать архив: %v", err)
+	}
+
+	dstDir := filepath.Join(tmpDir, "dst")
+	os.MkdirAll(dstDir, 0755)
+
+	if err := Extract(archivePath, dstDir, false); err != nil {
+		t.Fatalf("Extract не должен падать на файлах с точками, ошибка: %v", err)
+	}
+
+	// Проверяем, что все файлы созданы.
+	for _, name := range names {
+		p := filepath.Join(dstDir, name)
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("файл %q не был распакован: %v", name, err)
+		}
+	}
+}
+
 // TestExtractRejectsTraversal проверяет, что Extract отклоняет пути с ".." (path traversal).
 func TestExtractRejectsTraversal(t *testing.T) {
 	var buf bytes.Buffer

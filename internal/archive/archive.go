@@ -191,15 +191,19 @@ func Extract(srcFile, dstDir string, force bool) error {
 			continue
 		}
 
-		// Предотвращаем path traversal атаки.
-		// Отказываем явные ".." сегменты и абсолютные пути.
-		if strings.Contains(cleanRelPath, "..") || filepath.IsAbs(cleanRelPath) {
+		// Предотвращаем path traversal: абсолютные пути запрещены.
+		if filepath.IsAbs(cleanRelPath) {
 			return fmt.Errorf("небезопасный путь в архиве: %s", hdr.Name)
 		}
+		// Сравниваем очищенный целевой путь с очищенным dstDir.
+		// filepath.Join уже вызывает Clean, который схлопывает ".." сегменты.
+		// Если после этого путь выходит за пределы dstDir — это попытка traversal.
+		// Важно: эта проверка работает корректно для путей с точками в именах
+		// (".DS_Store", "v1.0", "файл..тест") — они не выходят за пределы dstDir.
 		targetPath := filepath.Join(dstDir, cleanRelPath)
 		cleanDst := filepath.Clean(dstDir)
-		// targetPath должен быть внутри dstDir или равен ему.
-		if targetPath != cleanDst && !strings.HasPrefix(targetPath, cleanDst+string(os.PathSeparator)) {
+		rel, err := filepath.Rel(cleanDst, targetPath)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return fmt.Errorf("небезопасный путь в архиве: %s", hdr.Name)
 		}
 
