@@ -1,0 +1,9 @@
+endpoint: "https://s3.amazonaws.com"
+region: "us-east-1"
+access_key_id: "YOUR_ACCESS_KEY"
+secret_access_key: "YOUR_SECRET_KEY"
+session_token: ""
+default_bucket: "my-backups"
+compression_level: 6
+path_style: false
+use_ssl: true
