@@ -38,24 +38,28 @@ type DownloadResult struct {
 	Size int64
 }
 
-// keyPatternWithSource — формат с поддиректорией source: backups/<source>/<timestamp>__<tag>.tar.gz
-var keyPatternWithSource = regexp.MustCompile(`^backups/[^/]+/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)__([^/]+)\.tar\.gz$`)
+// keyPatternRoot — основной формат ключа в корне бакета: <timestamp>__<tag>.tar.gz
+var keyPatternRoot = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_+([^/]+)\.tar\.gz$`)
 
-// keyPatternFlat — формат без поддиректории: backups/<timestamp>__<tag>.tar.gz
-// Поддерживает вариант с двойными подчёркиваниями (__) и тройными (___),
-// которые появляются, если source был пустым в старых версиях (обратная совместимость).
-var keyPatternFlat = regexp.MustCompile(`^backups/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_+([^/]+)\.tar\.gz$`)
+// keyPatternBackupsRoot — легаси-формат: backups/<timestamp>__<tag>.tar.gz или backups/<timestamp>___<tag>.tar.gz
+var keyPatternBackupsRoot = regexp.MustCompile(`^backups/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)_+([^/]+)\.tar\.gz$`)
+
+// keyPatternBackupsSource — легаси-формат: backups/<source>/<timestamp>__<tag>.tar.gz
+var keyPatternBackupsSource = regexp.MustCompile(`^backups/[^/]+/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)__([^/]+)\.tar\.gz$`)
 
 // ParseKey разбирает ключ S3-объекта и извлекает timestamp и тег.
-// Поддерживает два формата:
-//   - backups/<source>/<timestamp>__<tag>.tar.gz — основной формат
-//   - backups/<timestamp>__<tag>.tar.gz — fallback для архивов, залитых раньше с пустым source
-// Возвращает timestamp, tag и флаг успешного разбора.
+// Поддерживает три формата (основной — первый, остальные — для совместимости):
+//   - <timestamp>__<tag>.tar.gz — в корне бакета
+//   - backups/<timestamp>__<tag>.tar.gz — в поддиректории backups/
+//   - backups/<source>/<timestamp>__<tag>.tar.gz — старый формат с именем источника
 func ParseKey(key string) (timestamp, tag string, ok bool) {
-	if m := keyPatternWithSource.FindStringSubmatch(key); m != nil {
+	if m := keyPatternRoot.FindStringSubmatch(key); m != nil {
 		return m[1], m[2], true
 	}
-	if m := keyPatternFlat.FindStringSubmatch(key); m != nil {
+	if m := keyPatternBackupsSource.FindStringSubmatch(key); m != nil {
+		return m[1], m[2], true
+	}
+	if m := keyPatternBackupsRoot.FindStringSubmatch(key); m != nil {
 		return m[1], m[2], true
 	}
 	return "", "", false
@@ -64,8 +68,8 @@ func ParseKey(key string) (timestamp, tag string, ok bool) {
 // Download скачивает архив из S3 и распаковывает его в указанную директорию.
 // Если тег не указан, выбирает самый свежий архив по timestamp из имени ключа.
 func Download(ctx context.Context, storage Storage, params DownloadParams) (*DownloadResult, error) {
-	// Получаем список объектов в бакете с префиксом backups/
-	objects, err := storage.List(ctx, params.Bucket, "backups/")
+	// Получаем все объекты бакета (без префикса), чтобы найти и в корне, и в легаси-префиксах
+	objects, err := storage.List(ctx, params.Bucket, "")
 	if err != nil {
 		return nil, fmt.Errorf("не удалось подключиться к S3: %w", err)
 	}

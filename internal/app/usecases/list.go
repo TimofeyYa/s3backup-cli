@@ -33,14 +33,9 @@ type ListItem struct {
 // List возвращает список архивов в S3-бакете.
 // Поддерживает фильтрацию по имени источника.
 func List(ctx context.Context, storage Storage, params ListParams) ([]ListItem, error) {
-	// Формируем префикс для фильтрации
-	prefix := "backups/"
-	if params.Source != "" {
-		prefix = fmt.Sprintf("backups/%s/", params.Source)
-	}
-
-	// Получаем список объектов
-	objects, err := storage.List(ctx, params.Bucket, prefix)
+	// Получаем все объекты бакета (архивы хранятся в корне).
+	// Фильтрация по source выполняется ниже по метаданным или легаси-ключу.
+	objects, err := storage.List(ctx, params.Bucket, "")
 	if err != nil {
 		return nil, fmt.Errorf("не удалось подключиться к S3: %w", err)
 	}
@@ -72,21 +67,17 @@ func List(ctx context.Context, storage Storage, params ListParams) ([]ListItem, 
 	return items, nil
 }
 
-// extractSource извлекает имя источника из ключа S3-объекта.
-// Основной формат: backups/<source>/<timestamp>__<tag>.tar.gz
-// Для flat-формата (backups/<timestamp>__<tag>.tar.gz) возвращает "(unknown)".
+// extractSource извлекает имя источника из ключа S3-объекта (только для легаси-формата).
+// Основной формат (в корне бакета) не содержит source в ключе — возвращается "(unknown)".
 func extractSource(key string) string {
-	// Убираем префикс "backups/"
-	if len(key) < 8 {
-		return ""
-	}
-	rest := key[8:] // после "backups/"
-	// Ищем следующий слэш
-	for i, ch := range rest {
-		if ch == '/' {
-			return rest[:i]
+	const prefix = "backups/"
+	if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+		rest := key[len(prefix):]
+		for i, ch := range rest {
+			if ch == '/' {
+				return rest[:i]
+			}
 		}
 	}
-	// Слэша нет — это flat-формат без source.
 	return "(unknown)"
 }

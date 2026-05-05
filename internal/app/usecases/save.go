@@ -90,14 +90,14 @@ func Save(ctx context.Context, storage Storage, params SaveParams) (*SaveResult,
 		return nil, fmt.Errorf("исходный путь не существует: %s", params.SourcePath)
 	}
 
-	// Нормализуем имя директории для ключа S3
+	// Нормализуем имя директории для метаданных (не используется в ключе S3)
 	dirName := NormalizeDirName(params.SourcePath)
 
 	// Формируем timestamp для ключа объекта
 	timestamp := time.Now().UTC().Format("2006-01-02T15-04-05Z")
 
-	// Формируем ключ объекта в S3
-	key := fmt.Sprintf("backups/%s/%s__%s.tar.gz", dirName, timestamp, params.Tag)
+	// Ключ объекта в корне бакета: <timestamp>__<tag>.tar.gz
+	key := fmt.Sprintf("%s__%s.tar.gz", timestamp, params.Tag)
 
 	// Создаём временный файл для архива
 	tmpFile, err := os.CreateTemp("", "s3back-*.tar.gz")

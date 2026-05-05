@@ -52,9 +52,9 @@ func TestSaveUploadsWithCorrectKeyAndMetadata(t *testing.T) {
 		t.Errorf("бакет: ожидается 'test-bucket', получено %q", call.bucket)
 	}
 
-	// Проверяем формат ключа: backups/<source>/<timestamp>__<tag>.tar.gz
-	if !strings.HasPrefix(call.key, "backups/") {
-		t.Errorf("ключ должен начинаться с 'backups/', получено: %q", call.key)
+	// Проверяем формат ключа: <timestamp>__<tag>.tar.gz в корне бакета
+	if strings.Contains(call.key, "/") {
+		t.Errorf("ключ не должен содержать слэша (храним в корне), получено: %q", call.key)
 	}
 	if !strings.HasSuffix(call.key, "__daily.tar.gz") {
 		t.Errorf("ключ должен заканчиваться на '__daily.tar.gz', получено: %q", call.key)

@@ -180,15 +180,26 @@ func Extract(srcFile, dstDir string, force bool) error {
 		// Формируем целевой путь
 		// Сохраняем структуру архива включая верхнеуровневую директорию
 		relPath := hdr.Name
-		// Убираем конечный слэш для директорий при проверке (но не для создания)
+		// Убираем ведущие "./" (корневые маркеры в некоторых tar-архивах).
+		for strings.HasPrefix(relPath, "./") {
+			relPath = relPath[2:]
+		}
+		// Убираем конечный слэш для директорий при проверке (но не для создания).
 		cleanRelPath := strings.TrimSuffix(relPath, "/")
-		if cleanRelPath == "" {
+		// Пустые или точечные записи (".", "./") — это корневые маркеры, пропускаем.
+		if cleanRelPath == "" || cleanRelPath == "." {
 			continue
 		}
 
-		// Предотвращаем path traversal атаки
+		// Предотвращаем path traversal атаки.
+		// Отказываем явные ".." сегменты и абсолютные пути.
+		if strings.Contains(cleanRelPath, "..") || filepath.IsAbs(cleanRelPath) {
+			return fmt.Errorf("небезопасный путь в архиве: %s", hdr.Name)
+		}
 		targetPath := filepath.Join(dstDir, cleanRelPath)
-		if !strings.HasPrefix(targetPath, filepath.Clean(dstDir)+string(os.PathSeparator)) {
+		cleanDst := filepath.Clean(dstDir)
+		// targetPath должен быть внутри dstDir или равен ему.
+		if targetPath != cleanDst && !strings.HasPrefix(targetPath, cleanDst+string(os.PathSeparator)) {
 			return fmt.Errorf("небезопасный путь в архиве: %s", hdr.Name)
 		}
 
